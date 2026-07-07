@@ -1,0 +1,11 @@
+work/
+result/*
+!result/.gitkeep
+config.env
+*.wav
+*.m4a
+.DS_Store
+
+# Личные mapping-файлы — в репозиторий только example.json
+mappings/*
+!mappings/example.json
