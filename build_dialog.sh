@@ -68,20 +68,40 @@ if [[ -z "$TITLE" ]]; then
   TITLE="$(basename "${JSON%.json}")"
 fi
 
-python3 - "$JSON" "$OUTPUT" "$TITLE" "$MAPPING" <<'PY'
+python3 - "$JSON" "$OUTPUT" "$TITLE" "$MAPPING" "$SCRIPT_DIR" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-json_path, out_path, title, mapping_path = sys.argv[1:5]
+json_path, out_path, title, mapping_path, script_dir = sys.argv[1:6]
 
 with open(json_path, encoding="utf-8") as f:
     data = json.load(f)
 
+# Canonical exports carry review metadata that the legacy WhisperX grouping
+# below cannot represent. Reuse the pipeline formatter so rebuilding Markdown
+# retains exactly the same warnings, alternatives, and timestamp precision.
+if 'schema_version' in data:
+    if data['schema_version'] != 1:
+        raise ValueError('Unsupported transcript schema_version')
+    sys.path.insert(0, script_dir)
+    from whisper_transcribe.formats import render
+
+    names = {}
+    if mapping_path:
+        with open(mapping_path, encoding='utf-8') as f:
+            names = json.load(f)
+        if not isinstance(names, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in names.items()):
+            raise ValueError('Speaker mapping must be a JSON object of names')
+    markdown = render(data, mapping=names, title=title)['md']
+    Path(out_path).write_text(markdown, encoding='utf-8')
+    print(f'Готово: {out_path}')
+    sys.exit(0)
+
 speakers = sorted({
-    seg.get("speaker")
+    seg.get("speaker") or "UNKNOWN"
     for seg in data.get("segments", [])
-    if seg.get("speaker")
+    if (seg.get("text") or "").strip()
 })
 
 if mapping_path and Path(mapping_path).is_file():
@@ -89,13 +109,13 @@ if mapping_path and Path(mapping_path).is_file():
         names = json.load(f)
 else:
     names = {
-        sp: f"Спикер {i}"
+        sp: "Неизвестный" if sp == "UNKNOWN" else f"Спикер {i}"
         for i, sp in enumerate(speakers, 1)
     }
 
 # дополнить неизвестные метки
 for i, sp in enumerate(speakers, 1):
-    names.setdefault(sp, f"Спикер {i}")
+    names.setdefault(sp, "Неизвестный" if sp == "UNKNOWN" else f"Спикер {i}")
 
 speakers_line = ", ".join(dict.fromkeys(names[sp] for sp in speakers if sp in names))
 
@@ -109,11 +129,11 @@ blocks = []
 current = None
 
 for seg in data.get("segments", []):
-    sp = seg.get("speaker")
+    sp = seg.get("speaker") or "UNKNOWN"
     text = (seg.get("text") or "").strip()
-    if not sp or not text:
+    if not text:
         continue
-    name = names.get(sp, sp)
+    name = names.get(sp, "Неизвестный" if sp == "UNKNOWN" else sp)
     start = seg.get("start", 0)
     end = seg.get("end", start)
 

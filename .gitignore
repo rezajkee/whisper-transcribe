@@ -9,3 +9,22 @@ config.env
 # Личные mapping-файлы — в репозиторий только example.json
 mappings/*
 !mappings/example.json
+
+__pycache__/
+*.py[cod]
+
+# Локальные медиа, секреты и окружения не входят в исходный код.
+*.mp3
+*.mp4
+*.mov
+*.flac
+*.ogg
+*.opus
+*.aac
+*.aiff
+*.mkv
+.env
+.env.*
+!.env.example
+.venv/
+venv/
